@@ -104,3 +104,21 @@ export class CreateTodo {
 - ここで全体`id`や`createdAt`などをここで生成
 - 生成するのは`domains`で可能
 - 保存処理はどのように実現するのか？・・・`getways`が担当
+- `import { ITodoRepository } from "./ITodoRespository";`を呼び出しているがこちらのコードは以下の通り
+
+```ts
+import { Todo } from "../../../domain/Todo";
+import { ID } from "../../../type";
+
+// usecase層と interface層(gateways(repository))を繋げる抽象インターフェース
+export interface ITodoRepository {
+  findAll(): Promise<Array<Todo>>;
+  find(id: ID): Promise<Todo | null>;
+  create(todo: Todo): Promise<Todo>;
+  update(todo: Todo): Promise<Todo>;
+  delete(id: ID): Promise<null>;
+}
+```
+
+- `domains`から`Todo`の型を import している
+- ここでは`findAll`など`todo`を取得したり操作したりする関数をこちらで定義している
