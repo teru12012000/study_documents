@@ -122,3 +122,155 @@ export interface ITodoRepository {
 
 - `domains`から`Todo`の型を import している
 - ここでは`findAll`など`todo`を取得したり操作したりする関数をこちらで定義している
+- このコードの置き場はプロジェクトによって異なる
+- `Repository`に関しては`ITodoRepository`に依存していれば何にでも取り替えることができ、DB の取り替えが簡単になる
+
+## `getways`
+
+- ここではインメモリで todo を管理している(リロードしたら消えるやつ)
+
+```ts
+import { Todo } from "../../../domain/Todo";
+
+export let inMemoryTodo: Todo[] = [];
+```
+
+- 上記`inMemoryTodo`の配列に todo を保存していく
+
+```ts
+import { ITodoRepository } from "../../../application/usecases/Todo/ITodoRespository";
+import { Todo } from "../../../domain/Todo";
+import { ID } from "../../../type";
+import { inMemoryTodo } from "./InMemoryTodo";
+
+export class TodoRepository implements ITodoRepository {
+  private inmemoryTodo: Todo[];
+  constructor() {
+    // @ts-ignore
+    inMemoryTodo = [
+      new Todo("todo01", "インメモリtodo01"),
+      new Todo("todo02", "インメモリtodo02"),
+    ];
+    this.inmemoryTodo = inMemoryTodo;
+  }
+
+  async create(todo: Todo): Promise<Todo> {
+    new Promise(() => setTimeout(() => {}, 1000));
+    this.inmemoryTodo.push(todo);
+    return todo;
+  }
+
+  // そのほかのメソッドは省略
+}
+```
+
+- ここでは以下の処理を実装している
+  - `domain`から Todo のインスタンスを利用してインメモリにデータを初期化している
+  - 作成、削除などの関数を作成している
+- `sql`で`ITodoRepository.ts`に依存した Repository を作ればすぐに取り替えが可能
+
+## `presenters`
+
+- web や DB などの外部から input を内部で扱いやすくする
+- `usecase`が生成したデータが外部が扱いやすいように変換する
+
+```ts
+import { Todo } from "../../domain/Todo";
+import { ID } from "../../type";
+
+interface TodoResponse {
+  id: ID;
+  title: string;
+  description: string;
+}
+
+export interface ITodoOutputSerializer {
+  todo(todo: Todo): TodoResponse;
+  todos(todo: Todo[]): TodoResponse[];
+}
+```
+
+```ts
+import { Todo } from "../../domain/Todo";
+import { ITodoOutputSerializer } from "./ITodoSerializer";
+
+const serialize = (todo: Todo) => {
+  return {
+    id: todo.id,
+    title: todo.title,
+    description: todo.description,
+  };
+};
+
+export class TodoSerializer implements ITodoOutputSerializer {
+  todo(todo: Todo) {
+    return serialize(todo);
+  }
+  todos(todo: Todo[]) {
+    return todo.map((mTodo) => serialize(mTodo));
+  }
+}
+```
+
+- 上記コードは Todo リストの output を変換するコード
+- 最初のコードで定義した`interface`を 2 つ目のコードのクラスで継承している
+
+## `controllers`
+
+- `usecase`や`repository`などを利用し input/output の処理を実装
+
+```ts
+import { TodoRepository } from "../gateways/memory/TodoRepository";
+import { TodoSerializer } from "../presenters/TodoSerializer";
+import { GetTodo } from "../../application/usecases/Todo/GetTodo";
+import { GetTodoList } from "../../application/usecases/Todo/GetTodoList";
+import { CreateTodo } from "../../application/usecases/Todo/CreateTodo";
+import { UpdateTodo } from "../../application/usecases/Todo/UpdateTodo";
+import { DeleteTodo } from "../../application/usecases/Todo/DeleteTodo";
+import express from "express";
+
+type Request = {
+  req: express.Request;
+};
+
+export class TodoController {
+  private todoSerializer: TodoSerializer;
+  private todoRepository: TodoRepository;
+
+  constructor() {
+    this.todoRepository = new TodoRepository();
+    this.todoSerializer = new TodoSerializer();
+  }
+
+  async create({ req }: Request) {
+    const { title, description } = req.body;
+    const usecase = new CreateTodo(this.todoRepository);
+    const result = await usecase.execute(title, description);
+
+    return this.todoSerializer.todo(result);
+  }
+  // その他のメソッドは省略
+}
+```
+
+## `infrastucture`
+
+- フレームワークや DB の詳細を格納
+
+```ts
+import express = require("express");
+import { TodoController } from "../interfaces/controller/TodoController";
+
+const todoController = new TodoController();
+const router = express.Router();
+router.post("/todo", async (req: express.Request, res: express.Response) => {
+  const result = await todoController.create({ req });
+  res.send(result);
+});
+
+// その他のエンドポイントは省略
+
+export default router;
+```
+
+- ここでは`express`を使っているようだ
